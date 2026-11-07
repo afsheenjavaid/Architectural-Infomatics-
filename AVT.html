@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Activity Timeline | Coworking Space - Interactive Halftone Visualization</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            user-select: none;
+        }
+        body {
+            background-color: #eef2f6;
+            color: #1e293b;
+            overflow-x: hidden;
+        }
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+        .preset-btn {
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .preset-btn.active {
+            background-color: #0f172a;
+            color: #ffffff;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.15);
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+        }
+        /* Custom Tooltip Styling */
+        #tooltip {
+            position: absolute;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s ease, transform 0.1s ease-out;
+            transform: translate(-50%, -120%);
+            z-index: 50;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-4 sm:p-8 md:p-12">
+
+    <!-- Header & Interactive Controls -->
+    <header class="max-w-6xl w-full mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-4 z-10">
+        <div>
+            <h1 class="text-2xl sm:text-3xl font-light tracking-tight text-slate-800">Daily Activity Timeline</h1>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1">Hover over the particle field to interact with dots & ripple perturbations.</p>
+        </div>
+
+        <!-- Filter Presets -->
+        <div class="flex flex-wrap items-center gap-2 glass-panel p-1.5 rounded-2xl shadow-xs">
+            <button onclick="setPreset('weekday')" id="btn-weekday" class="preset-btn active px-4 py-2 text-xs sm:text-sm font-medium rounded-xl text-slate-600 hover:text-slate-900">
+                Weekday
+            </button>
+            <button onclick="setPreset('weekend')" id="btn-weekend" class="preset-btn px-4 py-2 text-xs sm:text-sm font-medium rounded-xl text-slate-600 hover:text-slate-900">
+                Weekend
+            </button>
+            <button onclick="setPreset('focus')" id="btn-focus" class="preset-btn px-4 py-2 text-xs sm:text-sm font-medium rounded-xl text-slate-600 hover:text-slate-900">
+                Focus Hours
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Canvas Visualization Viewport -->
+    <main class="relative max-w-6xl w-full mx-auto flex-1 flex flex-col justify-center my-4">
+        <div id="canvas-container" class="relative w-full h-[450px] sm:h-[520px] rounded-3xl glass-panel shadow-sm overflow-hidden border border-slate-200/60">
+            <canvas id="halftoneCanvas"></canvas>
+
+            <!-- Floating Interactive Tooltip -->
+            <div id="tooltip" class="glass-panel bg-white/90 px-4 py-2.5 rounded-2xl shadow-xl border border-white/80">
+                <div class="text-[10px] uppercase font-bold tracking-wider text-slate-400" id="tt-period">Morning</div>
+                <div class="text-xs font-semibold text-slate-800" id="tt-time">09:30 AM</div>
+                <div class="flex items-center gap-2 mt-1">
+                    <div class="w-2 h-2 rounded-full bg-sky-500" id="tt-indicator"></div>
+                    <span class="text-xs text-slate-600" id="tt-value">Activity: 84%</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer Stats / Legend -->
+    <footer class="max-w-6xl w-full mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400 border-t border-slate-200/60 pt-4">
+        <div class="flex items-center gap-6">
+            <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-teal-400"></span> 06:00 - 12:00</span>
+            <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span> 12:00 - 18:00</span>
+            <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-purple-400"></span> 18:00 - 24:00</span>
+        </div>
+        <div>Visualizing continuous halftone curve density</div>
+    </footer>
+
+    <script>
+        /**
+         * Interactive Halftone Curve Visualizer Engine
+         * Built using HTML5 Canvas 2D Context with custom physics spring animation
+         */
+        const canvas = document.getElementById('halftoneCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvas-container');
+        const tooltip = document.getElementById('tooltip');
+
+        // Layout Configs
+        let width = 0;
+        let height = 0;
+        let dpr = window.devicePixelRatio || 1;
+
+        // Grid parameters
+        const gridSpacingX = 11; // Horizontal spacing between dot columns
+        const gridSpacingY = 11; // Vertical spacing between dot rows
+        const maxRadius = 4.2;   // Maximum base dot radius
+
+        // Physics & Mouse Interaction Configs
+        const mouse = { x: -1000, y: -1000, targetX: -1000, targetY: -1000, active: false };
+        const hoverRadius = 110;  // Mouse interaction influence radius
+        const pushForce = 35;     // Distance dots are displaced away from cursor
+
+        // Spectral Color Palette Stops (Teal -> Green -> Yellow -> Coral -> Magenta -> Purple)
+        const palette = [
+            { r: 45,  g: 175, b: 195 }, // Teal
+            { r: 120, g: 195, b: 90  }, // Light Green
+            { r: 235, g: 195, b: 35  }, // Yellow
+            { r: 245, g: 120, b: 95  }, // Coral / Salmon
+            { r: 220, g: 80,  b: 145 }, // Magenta
+            { r: 130, g: 90,  b: 185 }  // Purple
+        ];
+
+        // Wave Data Presets (Multi-gaussian curves simulating daily peaks)
+        const presets = {
+            weekday: [
+                { center: 0.28, width: 0.12, height: 0.72 }, // Morning workout/commute peak
+                { center: 0.50, width: 0.18, height: 0.45 }, // Afternoon steady flow
+                { center: 0.72, width: 0.10, height: 0.65 }, // Evening peak
+                { center: 0.88, width: 0.08, height: 0.35 }  // Late night unwind
+            ],
+            weekend: [
+                { center: 0.22, width: 0.08, height: 0.25 }, // Low morning activity
+                { center: 0.48, width: 0.22, height: 0.82 }, // Peak mid-day leisure
+                { center: 0.76, width: 0.16, height: 0.75 }  // Strong evening social
+            ],
+            focus: [
+                { center: 0.32, width: 0.09, height: 0.90 }, // Intense morning deep work
+                { center: 0.62, width: 0.11, height: 0.85 }, // Focused afternoon sprint
+                { center: 0.85, width: 0.10, height: 0.20 }  // Minimal evening work
+            ]
+        };
+
+        let currentPreset = 'weekday';
+        let targetCurves = presets.weekday;
+        let animatedCurves = JSON.parse(JSON.stringify(presets.weekday));
+
+        let dots = [];
+
+        // Utility: Interpolate RGB Color Array
+        function getSpectralColor(t) {
+            t = Math.max(0, Math.min(1, t));
+            const scaled = t * (palette.length - 1);
+            const index = Math.floor(scaled);
+            const remainder = scaled - index;
+
+            if (index >= palette.length - 1) {
+                return palette[palette.length - 1];
+            }
+
+            const c1 = palette[index];
+            const c2 = palette[index + 1];
+
+            return {
+                r: Math.round(c1.r + (c2.r - c1.r) * remainder),
+                g: Math.round(c1.g + (c2.g - c1.g) * remainder),
+                b: Math.round(c1.b + (c2.b - c1.b) * remainder)
+            };
+        }
+
+        // Calculate height value of wave at horizontal position x (0 to 1)
+        function getCurveHeightAt(xNormalized, curves) {
+            let totalHeight = 0.04; // Base baseline height
+            curves.forEach(c => {
+                const dist = (xNormalized - c.center) / c.width;
+                totalHeight += c.height * Math.exp(-0.5 * dist * dist);
+            });
+            return Math.min(0.88, totalHeight);
+        }
+
+        // Initialize & Grid Generation
+        function initGrid() {
+            width = container.clientWidth;
+            height = container.clientHeight;
+
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            canvas.style.width = `${width}px`;
+            canvas.style.height = `${height}px`;
+
+            ctx.scale(dpr, dpr);
+
+            dots = [];
+            const cols = Math.floor(width / gridSpacingX);
+            const rows = Math.floor(height / gridSpacingY);
+
+            const startX = (width - cols * gridSpacingX) / 2 + gridSpacingX / 2;
+            const startY = height - 40; // Baseline margin from bottom
+
+            for (let c = 0; c < cols; c++) {
+                const x = startX + c * gridSpacingX;
+                const normX = x / width;
+
+                for (let r = 0; r < rows; r++) {
+                    const y = startY - r * gridSpacingY;
+                    if (y < 40) continue; // Top padding boundary
+
+                    dots.push({
+                        baseX: x,
+                        baseY: y,
+                        x: x,
+                        y: y,
+                        vx: 0,
+                        vy: 0,
+                        normX: normX,
+                        row: r,
+                        col: c,
+                        jitterX: (Math.random() - 0.5) * 1.5,
+                        jitterY: (Math.random() - 0.5) * 1.5,
+                        phase: Math.random() * Math.PI * 2
+                    });
+                }
+            }
+        }
+
+        // Change Active Preset with Smooth Interpolation
+        window.setPreset = function(presetKey) {
+            currentPreset = presetKey;
+            targetCurves = presets[presetKey];
+
+            document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
+            const activeBtn = document.getElementById(`btn-${presetKey}`);
+            if (activeBtn) activeBtn.classList.add('active');
+        };
+
+        // Render Canvas Frame
+        function render(time) {
+            ctx.clearRect(0, 0, width, height);
+
+            // Interpolate active curve targets
+            for (let i = 0; i < targetCurves.length; i++) {
+                if (!animatedCurves[i]) {
+                    animatedCurves[i] = { ...targetCurves[i] };
+                }
+                animatedCurves[i].center += (targetCurves[i].center - animatedCurves[i].center) * 0.08;
+                animatedCurves[i].width += (targetCurves[i].width - animatedCurves[i].width) * 0.08;
+                animatedCurves[i].height += (targetCurves[i].height - animatedCurves[i].height) * 0.08;
+            }
+
+            // Smooth Mouse Interpolation
+            mouse.x += (mouse.targetX - mouse.x) * 0.2;
+            mouse.y += (mouse.targetY - mouse.y) * 0.2;
+
+            // Draw Section Dividing Vertical Markers
+            drawTimelineDividers();
+
+            const timeSec = time * 0.002;
+
+            // Render Halftone Dots
+            dots.forEach(dot => {
+                const curvePeakHeight = getCurveHeightAt(dot.normX, animatedCurves);
+                const maxHeightForColumn = curvePeakHeight * (height - 100);
+
+                // Vertical distance from bottom baseline
+                const distFromBottom = height - 40 - dot.baseY;
+
+                if (distFromBottom > maxHeightForColumn) {
+                    return; // Outside current curve silhouette
+                }
+
+                // Halftone size falloff near top of curve
+                const densityRatio = 1 - (distFromBottom / maxHeightForColumn);
+                const baseDotRadius = Math.max(0.6, maxRadius * Math.pow(densityRatio, 0.45));
+
+                // Mouse interaction distance
+                const dx = dot.x - mouse.x;
+                const dy = dot.y - mouse.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                // Spring physics & dynamic jitter
+                let force = 0;
+                let targetX = dot.baseX;
+                let targetY = dot.baseY;
+
+                if (dist < hoverRadius) {
+                    force = (1 - dist / hoverRadius);
+                    const angle = Math.atan2(dy, dx);
+                    
+                    // Push away from cursor + add jitter vibration
+                    const jitterAmount = force * 6;
+                    const jitterX = Math.sin(timeSec * 8 + dot.phase) * jitterAmount;
+                    const jitterY = Math.cos(timeSec * 8 + dot.phase) * jitterAmount;
+
+                    targetX += Math.cos(angle) * force * pushForce + jitterX;
+                    targetY += Math.sin(angle) * force * pushForce + jitterY;
+                }
+
+                // Spring tension towards base position
+                dot.vx += (targetX - dot.x) * 0.12;
+                dot.vy += (targetY - dot.y) * 0.12;
+                dot.vx *= 0.78; // Damping
+                dot.vy *= 0.78;
+
+                dot.x += dot.vx;
+                dot.y += dot.vy;
+
+                // Color calculation based on X-axis normalized coordinate
+                const color = getSpectralColor(dot.normX);
+
+                // Glow / Highlight scale effect on hover
+                let radius = baseDotRadius * (1 + force * 0.65);
+                let alpha = 0.85 + force * 0.15;
+
+                ctx.beginPath();
+                ctx.arc(dot.x, dot.y, radius, 0, Math.PI * 2);
+
+                if (force > 0.1) {
+                    // Enhanced hover color shift
+                    ctx.fillStyle = `rgba(${Math.min(255, color.r + 40)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 40)}, ${alpha})`;
+                    ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, 0.5)`;
+                    ctx.shadowBlur = force * 10;
+                } else {
+                    ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`;
+                    ctx.shadowBlur = 0;
+                }
+
+                ctx.fill();
+            });
+
+            requestAnimationFrame(render);
+        }
+
+        // Draw Minimalist Divider Lines & Labels ("morning", "day", "evening")
+        function drawTimelineDividers() {
+            const periods = [
+                { label: 'morning', xRatio: 0.22 },
+                { label: 'day', xRatio: 0.50 },
+                { label: 'evening', xRatio: 0.78 }
+            ];
+
+            const lineStartY = 110;
+            const lineEndY = 200;
+
+            ctx.lineWidth = 1.2;
+            ctx.strokeStyle = 'rgba(30, 41, 59, 0.45)';
+            ctx.fillStyle = '#475569';
+            ctx.font = '500 13px "Plus Jakarta Sans", sans-serif';
+            ctx.textAlign = 'center';
+
+            periods.forEach((p, idx) => {
+                const posX = width * p.xRatio;
+
+                // Label
+                ctx.fillText(p.label, posX, 85);
+
+                // Minimalist Vertical Divider Line (Only between sections)
+                if (idx < 2) {
+                    const dividerX = width * (p.xRatio + 0.14);
+                    ctx.beginPath();
+                    ctx.moveTo(dividerX, lineStartY);
+                    ctx.lineTo(dividerX, lineEndY);
+                    ctx.stroke();
+                }
+            });
+        }
+
+        // Mouse & Touch Event Handlers
+        function handlePointerMove(e) {
+            const rect = canvas.getBoundingClientRect();
+            mouse.targetX = e.clientX - rect.left;
+            mouse.targetY = e.clientY - rect.top;
+            mouse.active = true;
+
+            updateTooltip(mouse.targetX, mouse.targetY);
+        }
+
+        function handlePointerLeave() {
+            mouse.targetX = -1000;
+            mouse.targetY = -1000;
+            mouse.active = false;
+            tooltip.style.opacity = '0';
+        }
+
+        // Interactive Tooltip Info Formatting
+        function updateTooltip(x, y) {
+            if (x < 0 || x > width || y < 0 || y > height) {
+                tooltip.style.opacity = '0';
+                return;
+            }
+
+            const normX = Math.max(0, Math.min(1, x / width));
+            
+            // Format 24-hour time based on X coordinate
+            const totalMinutes = Math.floor(normX * 24 * 60);
+            const hours = Math.floor(totalMinutes / 60);
+            const mins = totalMinutes % 60;
+            const periodStr = hours >= 12 ? 'PM' : 'AM';
+            const displayHours = hours % 12 === 0 ? 12 : hours % 12;
+            const formattedTime = `${String(displayHours).padStart(2, '0')}:${String(mins).padStart(2, '0')} ${periodStr}`;
+
+            // Determine Period Label
+            let periodName = 'Morning';
+            if (hours >= 12 && hours < 18) periodName = 'Afternoon';
+            else if (hours >= 18) periodName = 'Evening';
+
+            // Calculate exact activity curve percentage
+            const curveVal = getCurveHeightAt(normX, animatedCurves);
+            const activityPercent = Math.round((curveVal / 0.88) * 100);
+
+            // Update Tooltip Content & Position
+            document.getElementById('tt-period').innerText = periodName;
+            document.getElementById('tt-time').innerText = formattedTime;
+            document.getElementById('tt-value').innerText = `Activity Level: ${activityPercent}%`;
+
+            const color = getSpectralColor(normX);
+            document.getElementById('tt-indicator').style.backgroundColor = `rgb(${color.r}, ${color.g}, ${color.b})`;
+
+            tooltip.style.left = `${x}px`;
+            tooltip.style.top = `${y}px`;
+            tooltip.style.opacity = '1';
+        }
+
+        // Event Listeners
+        window.addEventListener('resize', () => {
+            initGrid();
+        });
+
+        canvas.addEventListener('mousemove', handlePointerMove);
+        canvas.addEventListener('mouseleave', handlePointerLeave);
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 0) {
+                handlePointerMove(e.touches[0]);
+            }
+        }, { passive: true });
+
+        canvas.addEventListener('touchend', handlePointerLeave);
+
+        // Initial setup and loop launch
+        window.onload = () => {
+            initGrid();
+            requestAnimationFrame(render);
+        };
+    </script>
+</body>
+</html>
