@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>To be or not to be</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            margin: 0;
+            display: grid;
+            place-items: center;
+            background: #302b2b;
+            font-family: Century Gothic, sans-serif;
+        }
+
+        .toggle-square {
+            width: min(100vw, 100vh, 400px);
+            aspect-ratio: 1;
+            display: grid;
+            place-items: center;
+            padding: 1.0rem;
+            border: 0;
+            background: #e53935;
+            color: #fff;
+            cursor: pointer;
+            transition: background-color 220ms ease;
+        }
+
+        .toggle-square.is-blue {
+            background: #2463eb;
+        }
+
+        .toggle-square:focus-visible {
+            outline: 8px solid #222;
+            outline-offset: 10px;
+        }
+
+        .toggle-label {
+            margin: 0;
+            font-size: clamp(1.0rem, 3vw, 2.5rem);
+            line-height: 1.0;
+            text-align: center;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .toggle-square {
+                transition: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="toggle-square" type="button" aria-pressed="false">
+        <span class="toggle-label" role="heading" aria-level="1">To be or not to be</span>
+    </button>
+
+    <script>
+        const toggle = document.querySelector(".toggle-square");
+
+        toggle.addEventListener("click", () => {
+            const isBlue = toggle.classList.toggle("is-blue");
+            toggle.setAttribute("aria-pressed", String(isBlue));
+        });
+    </script>
+</body>
+</html>

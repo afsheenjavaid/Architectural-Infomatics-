@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#070b18">
+    <title>Lights will Guide you Home</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            min-width: 280px;
+            min-height: 100vh;
+            min-height: 100svh;
+            margin: 0;
+            overflow: hidden;
+            color: #f3fbff;
+            background:
+                radial-gradient(ellipse at 50% 53%, rgba(19, 62, 91, 0.34), transparent 37%),
+                radial-gradient(ellipse at 50% 100%, rgba(25, 30, 66, 0.24), transparent 52%),
+                #070b18;
+            font-family: "Century Gothic", CenturyGothic, sans-serif;
+        }
+
+        main {
+            min-height: 100vh;
+            min-height: 100svh;
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            justify-items: center;
+            align-items: center;
+            padding: clamp(2.5rem, 8vh, 5.5rem) 1.25rem 2rem;
+        }
+
+        h1 {
+            margin: 0;
+            color: #f3fbff;
+            font-size: clamp(1.35rem, 4vw, 2.45rem);
+            font-weight: 400;
+            letter-spacing: 0.08em;
+            line-height: 1.3;
+            text-align: center;
+            text-shadow: 0 0 25px rgba(104, 210, 255, 0.22);
+        }
+
+        .scene {
+            position: relative;
+            width: min(78vw, 540px);
+            height: min(64vh, 540px);
+            min-height: 280px;
+            display: grid;
+            place-items: center;
+            perspective: 900px;
+        }
+
+        .scene::before {
+            position: absolute;
+            width: 58%;
+            aspect-ratio: 1;
+            border-radius: 50%;
+            background: #27c9ff;
+            content: "";
+            filter: blur(85px);
+            opacity: 0.08;
+            transition: opacity 450ms ease, transform 450ms ease;
+            transform: scale(0.78);
+        }
+
+        .scene:hover::before,
+        .scene:focus-within::before {
+            opacity: 0.32;
+            transform: scale(1.12);
+        }
+
+        .prism {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+            cursor: grab;
+            touch-action: none;
+            filter: drop-shadow(0 0 9px rgba(75, 221, 255, 0.2));
+            transition: filter 450ms ease;
+        }
+
+        .prism:hover,
+        .prism:focus-visible {
+            filter:
+                drop-shadow(0 0 12px rgba(94, 234, 255, 0.82))
+                drop-shadow(0 0 38px rgba(51, 185, 255, 0.56));
+        }
+
+        .prism:active {
+            cursor: grabbing;
+        }
+
+        .prism:focus-visible {
+            outline: none;
+        }
+
+        .hint {
+            margin: 0;
+            color: rgba(192, 220, 236, 0.66);
+            font-size: 0.7rem;
+            letter-spacing: 0.22em;
+            line-height: 1.8;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        @media (max-width: 600px) {
+            main {
+                padding-inline: 1rem;
+            }
+
+            .scene {
+                width: min(94vw, 480px);
+                height: min(56vh, 480px);
+            }
+
+            h1 {
+                letter-spacing: 0.035em;
+            }
+        }
+
+        @media (max-height: 520px) {
+            main {
+                padding-block: 1.5rem 1rem;
+            }
+
+            .scene {
+                width: min(66vw, 380px);
+                height: min(58vh, 380px);
+                min-height: 180px;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                transition-duration: 0.01ms !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Lights will Guide you Home</h1>
+        <div class="scene">
+            <canvas
+                class="prism"
+                id="prism"
+                role="img"
+                tabindex="0"
+                aria-label="Glowing glass triangular prism. Drag to rotate, or use the arrow keys."
+            >A glass triangular prism. Drag to rotate, or use the arrow keys.</canvas>
+        </div>
+        <p class="hint">Drag to rotate <span aria-hidden="true">·</span> Hover to illuminate</p>
+    </main>
+
+    <script>
+        const canvas = document.querySelector("#prism");
+        const context = canvas.getContext("2d");
+        const vertices = [
+            [0, -112, 1],
+            [-105, 61, 1],
+            [105, 61, 1],
+            [0, -112, -1],
+            [-105, 61, -1],
+            [105, 61, -1]
+        ];
+        const faces = [
+            { points: [0, 1, 2], color: "rgba(124, 238, 255, 0.15)" },
+            { points: [3, 5, 4], color: "rgba(76, 182, 255, 0.11)" },
+            { points: [0, 3, 4, 1], color: "rgba(93, 218, 255, 0.12)" },
+            { points: [1, 4, 5, 2], color: "rgba(61, 153, 235, 0.11)" },
+            { points: [2, 5, 3, 0], color: "rgba(139, 247, 255, 0.1)" }
+        ];
+        const edges = [
+            [0, 1], [1, 2], [2, 0],
+            [3, 4], [4, 5], [5, 3],
+            [0, 3], [1, 4], [2, 5]
+        ];
+        let rotationX = -0.22;
+        let rotationY = 0.58;
+        let dragPoint = null;
+        let width = 0;
+        let height = 0;
+
+        function resizeCanvas() {
+            const bounds = canvas.getBoundingClientRect();
+            const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+            width = bounds.width;
+            height = bounds.height;
+            canvas.width = Math.round(width * pixelRatio);
+            canvas.height = Math.round(height * pixelRatio);
+            context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+            drawPrism();
+        }
+
+        function rotateVertex([x, y, z]) {
+            const cosY = Math.cos(rotationY);
+            const sinY = Math.sin(rotationY);
+            const cosX = Math.cos(rotationX);
+            const sinX = Math.sin(rotationX);
+            const turnedX = x * cosY - z * sinY * 105;
+            const turnedZ = x * sinY / 105 + z * cosY;
+            return [
+                turnedX,
+                y * cosX - turnedZ * 105 * sinX,
+                y * sinX / 105 + turnedZ * cosX
+            ];
+        }
+
+        function drawPrism() {
+            if (!width || !height) return;
+
+            context.clearRect(0, 0, width, height);
+            const scale = Math.min(width / 440, height / 390, 1.18);
+            const focalLength = 720;
+            const projected = vertices.map((vertex) => {
+                const [x, y, z] = rotateVertex(vertex);
+                const depth = z * 105;
+                const perspective = focalLength / (focalLength - depth);
+                return {
+                    x: width / 2 + x * perspective * scale,
+                    y: height / 2 + y * perspective * scale,
+                    z: depth
+                };
+            });
+
+            const orderedFaces = faces
+                .map((face) => ({
+                    ...face,
+                    depth: face.points.reduce((sum, index) => sum + projected[index].z, 0) / face.points.length
+                }))
+                .sort((a, b) => a.depth - b.depth);
+
+            for (const face of orderedFaces) {
+                context.beginPath();
+                face.points.forEach((index, pointIndex) => {
+                    const point = projected[index];
+                    if (pointIndex === 0) context.moveTo(point.x, point.y);
+                    else context.lineTo(point.x, point.y);
+                });
+                context.closePath();
+
+                const centerX = face.points.reduce((sum, index) => sum + projected[index].x, 0) / face.points.length;
+                const centerY = face.points.reduce((sum, index) => sum + projected[index].y, 0) / face.points.length;
+                const gradient = context.createRadialGradient(centerX, centerY, 2, centerX, centerY, 180 * scale);
+                gradient.addColorStop(0, face.color);
+                gradient.addColorStop(1, "rgba(20, 72, 115, 0.025)");
+                context.fillStyle = gradient;
+                context.fill();
+            }
+
+            context.lineJoin = "round";
+            context.lineCap = "round";
+            context.lineWidth = 1.5;
+            context.strokeStyle = "rgba(162, 239, 255, 0.78)";
+            for (const [start, end] of edges) {
+                context.beginPath();
+                context.moveTo(projected[start].x, projected[start].y);
+                context.lineTo(projected[end].x, projected[end].y);
+                context.stroke();
+            }
+        }
+
+        canvas.addEventListener("pointerdown", (event) => {
+            dragPoint = { x: event.clientX, y: event.clientY };
+            canvas.setPointerCapture(event.pointerId);
+        });
+
+        canvas.addEventListener("pointermove", (event) => {
+            if (!dragPoint) return;
+            const deltaX = event.clientX - dragPoint.x;
+            const deltaY = event.clientY - dragPoint.y;
+            rotationY += deltaX * 0.009;
+            rotationX += deltaY * 0.009;
+            dragPoint = { x: event.clientX, y: event.clientY };
+            drawPrism();
+        });
+
+        function endDrag() {
+            dragPoint = null;
+        }
+
+        canvas.addEventListener("pointerup", endDrag);
+        canvas.addEventListener("pointercancel", endDrag);
+
+        canvas.addEventListener("keydown", (event) => {
+            const step = 0.12;
+            if (event.key === "ArrowLeft") rotationY -= step;
+            else if (event.key === "ArrowRight") rotationY += step;
+            else if (event.key === "ArrowUp") rotationX -= step;
+            else if (event.key === "ArrowDown") rotationX += step;
+            else return;
+            event.preventDefault();
+            drawPrism();
+        });
+
+        window.addEventListener("resize", resizeCanvas);
+        resizeCanvas();
+    </script>
+</body>
+</html>
